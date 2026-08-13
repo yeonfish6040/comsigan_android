@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="preview_bg">#141218</color>
+    <color name="preview_cell">#2B2930</color>
+    <color name="preview_accent_cell">#4F378B</color>
+    <color name="preview_text">#E6E0E9</color>
+    <color name="preview_muted">#CAC4D0</color>
+    <color name="preview_accent">#D0BCFF</color>
+    <color name="preview_today_cell">#3A3648</color>
+</resources>

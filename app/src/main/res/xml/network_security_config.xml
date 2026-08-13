@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 컴시간 서버는 평문 HTTP만 제공한다. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">comci.net</domain>
+    </domain-config>
+</network-security-config>

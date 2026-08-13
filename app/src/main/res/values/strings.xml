@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">컴시간</string>
+    <string name="widget_now_name">시간표 · 지금 수업</string>
+    <string name="widget_now_description">지금(또는 다음) 수업과 이어지는 교시를 보여줍니다.</string>
+    <string name="widget_today_name">시간표 · 오늘</string>
+    <string name="widget_today_description">오늘 하루 교시를 나란히 보여줍니다.</string>
+    <string name="widget_week_name">시간표 · 주간</string>
+    <string name="widget_week_description">월~금 전체 시간표를 보여줍니다.</string>
+</resources>
