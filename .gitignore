@@ -17,3 +17,7 @@ local.properties
 # Android Studio 로컬 설정
 /.idea/
 app/build/
+
+# 빌드 산출물
+*.apk
+*.aab

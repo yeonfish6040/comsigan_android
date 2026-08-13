@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -139,13 +140,19 @@ fun TutorialOverlay(anchors: TutorialAnchors, onFinish: () -> Unit) {
             else -> Alignment.TopCenter
         }
 
-        Column(
+        // Surface로 감싸야 글자색(onSurface)이 따라와 다크 모드에서도 읽힌다.
+        Surface(
             modifier = Modifier
                 .align(alignment)
                 .padding(20.dp)
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp))
-                .padding(20.dp),
+                .fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            tonalElevation = 3.dp,
+        ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
@@ -154,7 +161,12 @@ fun TutorialOverlay(anchors: TutorialAnchors, onFinish: () -> Unit) {
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold,
             )
-            Text(step.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                step.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
             Text(
                 step.body,
                 fontSize = 13.sp,
@@ -172,6 +184,7 @@ fun TutorialOverlay(anchors: TutorialAnchors, onFinish: () -> Unit) {
                     Text(if (index == steps.lastIndex) "시작하기" else "다음")
                 }
             }
+        }
         }
     }
 }
