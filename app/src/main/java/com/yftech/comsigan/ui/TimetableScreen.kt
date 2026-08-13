@@ -184,6 +184,7 @@ private fun Header(
             Row(
                 modifier = Modifier
                     .weight(1f)
+                    .tutorialAnchor(TutorialTargets.SCHOOL)
                     .clickable { onSearchSchool() },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -202,7 +203,11 @@ private fun Header(
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.tutorialAnchor(TutorialTargets.CLASS),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             PickerChip("${grade}학년", grades.map { it to "${it}학년" }, onSelectGrade)
             PickerChip("${klass}반", classes.map { it to "${it}반" }, onSelectClass)
         }

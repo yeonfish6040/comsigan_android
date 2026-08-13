@@ -11,6 +11,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -18,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.sp
+import com.yftech.comsigan.data.AppSettings
 import com.yftech.comsigan.widget.TimetableWidgets
 
 /** 아래 탭 구성. 화면을 추가하려면 여기 한 줄만 늘리면 된다. */
@@ -31,7 +33,10 @@ private enum class MainTab(val label: String) {
 fun MainScreen() {
     val context = LocalContext.current
     var tab by remember { mutableStateOf(MainTab.TIMETABLE) }
+    val anchors = rememberTutorialAnchors()
+    var showTutorial by remember { mutableStateOf(!AppSettings.isTutorialDone(context)) }
 
+    CompositionLocalProvider(LocalTutorialAnchors provides anchors) {
     Scaffold(
         bottomBar = {
             NavigationBar {
@@ -47,6 +52,11 @@ fun MainScreen() {
                         },
                         icon = {},
                         label = { Text(entry.label) },
+                        modifier = if (entry == MainTab.WIDGET) {
+                            Modifier.tutorialAnchor(TutorialTargets.WIDGET_TAB)
+                        } else {
+                            Modifier
+                        },
                     )
                 }
             }
@@ -61,5 +71,16 @@ fun MainScreen() {
                 MainTab.ABOUT -> AboutScreen()
             }
         }
+    }
+
+    if (showTutorial) {
+        TutorialOverlay(
+            anchors = anchors,
+            onFinish = {
+                AppSettings.setTutorialDone(context)
+                showTutorial = false
+            },
+        )
+    }
     }
 }

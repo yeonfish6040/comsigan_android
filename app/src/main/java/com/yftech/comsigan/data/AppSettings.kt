@@ -10,6 +10,7 @@ object AppSettings {
     private const val KEY_SCHOOL_CODE = "schoolCode"
     private const val KEY_SCHOOL_NAME = "schoolName"
     private const val KEY_THEME = "widgetTheme"
+    private const val KEY_TUTORIAL_DONE = "tutorialDone"
     private const val KEY_LAYOUT_PREFIX = "widgetLayout_"
     const val KEY_ENDPOINT = "endpoint"
     const val KEY_ENDPOINT_CHECKED_AT = "endpointCheckedAt"
@@ -47,6 +48,13 @@ object AppSettings {
 
     fun setWidgetLayout(context: Context, slotKey: String, layoutId: String) {
         prefs(context).edit().putString(KEY_LAYOUT_PREFIX + slotKey, layoutId).commit()
+    }
+
+    /** 첫 실행 안내를 이미 봤는지. */
+    fun isTutorialDone(context: Context): Boolean = prefs(context).getBoolean(KEY_TUTORIAL_DONE, false)
+
+    fun setTutorialDone(context: Context) {
+        prefs(context).edit().putBoolean(KEY_TUTORIAL_DONE, true).apply()
     }
 
     fun setSchool(context: Context, school: School) {
