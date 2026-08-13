@@ -4,11 +4,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -39,12 +40,12 @@ import com.yftech.comsigan.widget.WidgetSlot
 import com.yftech.comsigan.widget.WidgetThemes
 
 /**
- * 위젯 테마와 자리별 레이아웃을 고른다.
+ * 위젯 테마와 자리별 레이아웃을 고르는 화면.
  * 목록은 WidgetThemes.all / WidgetLayouts.all에서 그대로 가져오므로,
  * 새 테마나 레이아웃을 등록하면 여기에도 자동으로 나타난다.
  */
 @Composable
-fun WidgetSettingsDialog(onDismiss: () -> Unit, onChanged: () -> Unit) {
+fun WidgetSettingsScreen(onChanged: () -> Unit) {
     val context = LocalContext.current
 
     var themeId by remember { mutableStateOf(WidgetThemes.byId(context, AppSettings.widgetTheme(context)).id) }
@@ -91,14 +92,13 @@ fun WidgetSettingsDialog(onDismiss: () -> Unit, onChanged: () -> Unit) {
         )
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("위젯 설정") },
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
                 SectionTitle("테마")
                 // 실제 위젯과 같은 색으로 그린 미리보기. 가로로 넘겨 고른다.
                 Row(
@@ -159,10 +159,7 @@ fun WidgetSettingsDialog(onDismiss: () -> Unit, onChanged: () -> Unit) {
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("완료") } },
-    )
+    }
 }
 
 /** 새 팔레트를 만드는 자리. */

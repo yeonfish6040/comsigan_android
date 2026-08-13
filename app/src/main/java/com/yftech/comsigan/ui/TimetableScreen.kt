@@ -71,7 +71,6 @@ fun TimetableScreen() {
     var errorText by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
-    var showWidgetSettings by remember { mutableStateOf(false) }
     val now = remember { Date() }
 
     fun load(force: Boolean = false) {
@@ -94,17 +93,6 @@ fun TimetableScreen() {
     }
 
     LaunchedEffect(school.code, grade, klass) { load() }
-
-    if (showWidgetSettings) {
-        WidgetSettingsDialog(
-            // 완료를 누르거나 창을 닫을 때도 한 번 더 갱신을 보낸다.
-            onDismiss = {
-                showWidgetSettings = false
-                TimetableWidgets.requestRefresh(context)
-            },
-            onChanged = { TimetableWidgets.requestRefresh(context) },
-        )
-    }
 
     if (showSearch) {
         SchoolSearchDialog(
@@ -139,7 +127,6 @@ fun TimetableScreen() {
                 },
                 onSelectClass = { klass = it },
                 onRefresh = { load(force = true) },
-                onOpenWidgetSettings = { showWidgetSettings = true },
             )
 
             errorText?.let {
@@ -182,7 +169,6 @@ private fun Header(
     onSelectGrade: (Int) -> Unit,
     onSelectClass: (Int) -> Unit,
     onRefresh: () -> Unit,
-    onOpenWidgetSettings: () -> Unit,
 ) {
     val grades = remember(classCounts) {
         if (classCounts.size <= 1) listOf(1, 2, 3)
@@ -219,8 +205,6 @@ private fun Header(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             PickerChip("${grade}학년", grades.map { it to "${it}학년" }, onSelectGrade)
             PickerChip("${klass}반", classes.map { it to "${it}반" }, onSelectClass)
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = onOpenWidgetSettings) { Text("위젯 설정", fontSize = 13.sp) }
         }
     }
 }
