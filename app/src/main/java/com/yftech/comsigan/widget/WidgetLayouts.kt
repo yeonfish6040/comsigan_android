@@ -21,6 +21,7 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
 import com.yftech.comsigan.data.Timetable
+import com.yftech.comsigan.data.TimetableCell
 import com.yftech.comsigan.data.UpcomingClass
 
 /**
@@ -68,28 +69,30 @@ object NowNextLayout : WidgetLayout {
         WidgetSurface(scope) { timetable ->
             val palette = scope.palette
             val day = scope.today
-            val current = scope.currentPeriod
+            val segment = scope.segment
             val focus = scope.focusPeriod
             val cell = if (day != null && focus != null) timetable.cell(day, focus) else null
 
-            // 오늘 수업이 끝났거나 주말이면 다음 등교일 수업을 이어서 보여준다.
+            // 오늘 수업이 끝났거나 주말이면 다음 등교일(주가 넘어가면 다음 주) 수업을 이어서 보여준다.
             val room = ((scope.size.height - 104.dp) / 30.dp).toInt().coerceIn(1, 3)
             val upcoming = scope.upcoming(room)
 
             Column(modifier = GlanceModifier.fillMaxSize()) {
-                if (cell != null && focus != null) {
+                if (cell != null && focus != null && segment.headline != null) {
                     Row(verticalAlignment = Alignment.Vertical.CenterVertically) {
                         Text(
-                            if (current == null) "다음 ${focus}교시" else "지금 ${focus}교시",
+                            segment.headline!!,
                             style = TextStyle(
                                 fontSize = scope.sp(10f),
                                 fontWeight = FontWeight.Medium,
                                 color = palette.accent,
                             ),
                         )
-                        timetable.periodTime(focus)?.let {
+                        // 쉬는시간·점심에는 큰 글씨가 '다음' 수업이라는 걸 알려 준다.
+                        val trailing = segment.nextLabel ?: timetable.periodTime(focus)?.label
+                        if (trailing != null) {
                             Text(
-                                "  ${it.label}",
+                                "  $trailing",
                                 style = TextStyle(fontSize = scope.sp(10f), color = palette.textMuted),
                             )
                         }
@@ -430,6 +433,7 @@ object FocusLayout : WidgetLayout {
         val palette = scope.palette
         val timetable = scope.timetable
         val day = scope.today
+        val segment = scope.segment
         val focus = scope.focusPeriod
         val cell = if (timetable != null && day != null && focus != null) timetable.cell(day, focus) else null
 
@@ -441,33 +445,52 @@ object FocusLayout : WidgetLayout {
             verticalAlignment = Alignment.Vertical.CenterVertically,
             horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
         ) {
-            if (cell == null || timetable == null) {
-                Text(
-                    scope.status ?: "수업 없음",
-                    style = TextStyle(fontSize = scope.sp(16f), color = palette.textMuted),
+            val headline = segment.headline
+            if (cell != null && headline != null) {
+                // 쉬는시간·점심에는 "지금 쉬는시간 · 다음 5교시"처럼 상태와 다음 교시를 함께 적는다.
+                Subject(
+                    scope = scope,
+                    caption = listOfNotNull(headline, segment.nextLabel).joinToString(" · "),
+                    cell = cell,
                 )
                 return@Column
             }
 
-            Text(
-                if (scope.currentPeriod == null) "다음 ${focus}교시" else "${focus}교시",
-                style = TextStyle(fontSize = scope.sp(11f), color = palette.accent),
-            )
-            Text(
-                cell.displaySubject.ifEmpty { "공강" },
-                maxLines = 1,
-                style = TextStyle(
-                    fontSize = scope.sp(34f),
-                    fontWeight = FontWeight.Bold,
-                    color = if (cell.isChanged) palette.changed else palette.text,
-                ),
-            )
-            if (cell.teacher.isNotEmpty()) {
+            // 일과가 끝났으면 다음 등교일(주가 넘어가면 다음 주 월요일)을 대신 보여준다.
+            val ahead = scope.upcoming(1).firstOrNull()
+            if (ahead != null) {
+                Subject(scope = scope, caption = ahead.label, cell = ahead.cell)
+            } else {
                 Text(
-                    cell.teacher,
-                    style = TextStyle(fontSize = scope.sp(13f), color = palette.textMuted),
+                    scope.status ?: "수업 없음",
+                    style = TextStyle(fontSize = scope.sp(16f), color = palette.textMuted),
                 )
             }
+        }
+    }
+
+    @Composable
+    private fun Subject(scope: WidgetRenderScope, caption: String, cell: TimetableCell) {
+        val palette = scope.palette
+        Text(
+            caption,
+            maxLines = 1,
+            style = TextStyle(fontSize = scope.sp(11f), color = palette.accent),
+        )
+        Text(
+            cell.displaySubject.ifEmpty { "공강" },
+            maxLines = 1,
+            style = TextStyle(
+                fontSize = scope.sp(34f),
+                fontWeight = FontWeight.Bold,
+                color = if (cell.isChanged) palette.changed else palette.text,
+            ),
+        )
+        if (cell.teacher.isNotEmpty()) {
+            Text(
+                cell.teacher,
+                style = TextStyle(fontSize = scope.sp(13f), color = palette.textMuted),
+            )
         }
     }
 }

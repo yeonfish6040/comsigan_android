@@ -42,7 +42,8 @@
         android:layout_marginTop="9dp"
         android:layout_marginBottom="5dp"
         android:orientation="horizontal">
-        <View android:layout_width="14dp" android:layout_height="1dp" />
+        <!-- 미리보기는 RemoteViews로 부풀려지므로 android.view.View는 쓸 수 없다(허용 목록 밖). -->
+        <FrameLayout android:layout_width="14dp" android:layout_height="1dp" />
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"

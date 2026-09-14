@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yftech.comsigan.data.AppSettings
 import com.yftech.comsigan.data.ComciService
+import com.yftech.comsigan.data.ComciWeek
 import com.yftech.comsigan.data.School
 import com.yftech.comsigan.data.Timetable
 import com.yftech.comsigan.data.TimetableCell
@@ -68,6 +69,11 @@ fun TimetableScreen() {
 
     var timetable by remember { mutableStateOf<Timetable?>(null) }
     var classCounts by remember { mutableStateOf<List<Int>>(emptyList()) }
+    /** 서버가 알려준 열람 가능한 주차 목록(일자자료)과 지금 보고 있는 주차. */
+    var weeks by remember { mutableStateOf<List<ComciWeek>>(emptyList()) }
+    var selectedWeek by remember { mutableStateOf(ComciWeek.FIRST.r) }
+    var todayWeek by remember { mutableStateOf(ComciWeek.FIRST.r) }
+    var didPickWeek by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
@@ -80,9 +86,23 @@ fun TimetableScreen() {
             AppSettings.setSchool(context, school)
             TimetableWidgets.requestRefresh(context)
             try {
-                val document = ComciService.document(context, school.code, force)
+                // 처음에는 오늘이 낀 주를 찾아야 한다. r=1이 이번 주라는 보장이 없어
+                // 위젯과 어긋나면 안 된다. 그 뒤로는 고른 주차를 그대로 받아온다.
+                val document = if (didPickWeek) {
+                    ComciService.document(context, school.code, ComciWeek(selectedWeek), force)
+                } else {
+                    ComciService.currentDocument(context, school.code, force)
+                }
                 classCounts = document.classCounts
-                timetable = document.timetable(grade, klass)
+                // 고를 수 있는 주차는 서버가 응답마다 알려준다.
+                weeks = document.weeks
+                todayWeek = document.todayWeek
+                // 목록이 지난 주부터 시작할 수도 있어 처음 한 번은 오늘이 낀 주로 맞춘다.
+                if (!didPickWeek) {
+                    didPickWeek = true
+                    selectedWeek = document.todayWeek
+                }
+                timetable = document.timetable(grade, klass, context)
                 errorText = null
                 TimetableWidgets.requestRefresh(context)
             } catch (error: Exception) {
@@ -92,7 +112,7 @@ fun TimetableScreen() {
         }
     }
 
-    LaunchedEffect(school.code, grade, klass) { load() }
+    LaunchedEffect(school.code, grade, klass, selectedWeek) { load() }
 
     if (showSearch) {
         SchoolSearchDialog(
@@ -102,6 +122,9 @@ fun TimetableScreen() {
                 school = picked
                 grade = 1
                 klass = 1
+                // 학교마다 열람 가능한 주가 다르다.
+                weeks = emptyList()
+                didPickWeek = false
             },
         )
     }
@@ -127,6 +150,10 @@ fun TimetableScreen() {
                 },
                 onSelectClass = { klass = it },
                 onRefresh = { load(force = true) },
+                weeks = weeks,
+                selectedWeek = selectedWeek,
+                todayWeek = todayWeek,
+                onSelectWeek = { selectedWeek = it },
             )
 
             errorText?.let {
@@ -147,7 +174,7 @@ fun TimetableScreen() {
             val current = timetable
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 when {
-                    current != null -> WeekGrid(current, now)
+                    current != null -> WeekGrid(current, if (selectedWeek == todayWeek) now else null)
                     isLoading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                     else -> Text("시간표가 없습니다.", Modifier.align(Alignment.Center))
                 }
@@ -169,6 +196,10 @@ private fun Header(
     onSelectGrade: (Int) -> Unit,
     onSelectClass: (Int) -> Unit,
     onRefresh: () -> Unit,
+    weeks: List<ComciWeek>,
+    selectedWeek: Int,
+    todayWeek: Int,
+    onSelectWeek: (Int) -> Unit,
 ) {
     val grades = remember(classCounts) {
         if (classCounts.size <= 1) listOf(1, 2, 3)
@@ -211,11 +242,58 @@ private fun Header(
             PickerChip("${grade}학년", grades.map { it to "${it}학년" }, onSelectGrade)
             PickerChip("${klass}반", classes.map { it to "${it}반" }, onSelectClass)
         }
+
+        WeekStepper(weeks, selectedWeek, todayWeek, onSelectWeek)
     }
 }
 
+/**
+ * 주차 이동. 열람 페이지처럼 화살표로만 넘긴다.
+ * 학교가 다음 주를 아직 올리지 않았으면 목록이 하나뿐이라 통째로 감춘다.
+ */
 @Composable
-private fun PickerChip(label: String, options: List<Pair<Int, String>>, onSelect: (Int) -> Unit) {
+private fun WeekStepper(
+    weeks: List<ComciWeek>,
+    selectedWeek: Int,
+    todayWeek: Int,
+    onSelectWeek: (Int) -> Unit,
+) {
+    if (weeks.size <= 1) return
+
+    fun canStep(delta: Int) = weeks.any { it.r == selectedWeek + delta }
+    val label = weeks.firstOrNull { it.r == selectedWeek }?.label.orEmpty()
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        TextButton(onClick = { onSelectWeek(selectedWeek - 1) }, enabled = canStep(-1)) {
+            Text("◀", fontSize = 13.sp)
+        }
+        // 가운데 버튼은 오늘이 낀 주로 되돌아간다.
+        TextButton(onClick = { onSelectWeek(todayWeek) }, enabled = selectedWeek != todayWeek) {
+            Text("이번 주", fontSize = 13.sp)
+        }
+        TextButton(onClick = { onSelectWeek(selectedWeek + 1) }, enabled = canStep(1)) {
+            Text("▶", fontSize = 13.sp)
+        }
+        Text(
+            text = shortWeekLabel(label),
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp),
+        )
+    }
+}
+
+/** 일과시간 편집 화면에서도 같은 칩을 쓴다. */
+/** 연도를 뗀 기간 표기. "26-08-24 ~ 26-08-29" → "08-24 ~ 08-29" */
+private fun shortWeekLabel(label: String): String =
+    label.split("~")
+        .joinToString(" ~ ") { part -> part.trim().split("-").drop(1).joinToString("-") }
+
+/** 일과시간 편집 화면에서도 같은 칩을 쓴다. */
+@Composable
+fun PickerChip(label: String, options: List<Pair<Int, String>>, onSelect: (Int) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         AssistChip(
@@ -242,9 +320,10 @@ private fun PickerChip(label: String, options: List<Pair<Int, String>>, onSelect
 }
 
 @Composable
-private fun WeekGrid(timetable: Timetable, now: Date) {
-    val today = Timetable.dayIndex(now)
-    val currentPeriod = timetable.currentPeriod(now)
+private fun WeekGrid(timetable: Timetable, now: Date?) {
+    // 다른 주를 볼 때는 now가 null이라 오늘/현재 수업 표시가 꺼진다.
+    val today = now?.let { Timetable.dayIndex(it) }
+    val currentPeriod = now?.let { timetable.currentPeriod(it) }
 
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
         // 요일 머리글 — 오늘 요일만 알약 배경으로 강조한다.

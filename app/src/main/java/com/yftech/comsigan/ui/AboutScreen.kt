@@ -15,6 +15,10 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -31,6 +35,11 @@ private const val PRIVACY_POLICY_URL =
 fun AboutScreen() {
     val context = LocalContext.current
     val school = AppSettings.school(context)
+    var showScheduleEditor by remember { mutableStateOf(false) }
+
+    if (showScheduleEditor) {
+        ScheduleEditorDialog(onDismiss = { showScheduleEditor = false })
+    }
 
     Column(
         modifier = Modifier
@@ -57,6 +66,12 @@ fun AboutScreen() {
 
         HorizontalDivider(Modifier.padding(vertical = 12.dp))
 
+        MenuRow("일과시간 수정", trailing = "›", subtitle = "교시 시작 시각이 실제와 다를 때") {
+            showScheduleEditor = true
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 12.dp))
+
         Text("현재 학급", fontSize = 12.sp, fontWeight = FontWeight.Bold)
         Text(
             "${school.name} ${AppSettings.grade(context)}학년 ${AppSettings.klass(context)}반",
@@ -73,7 +88,12 @@ fun AboutScreen() {
 }
 
 @Composable
-private fun MenuRow(title: String, onClick: () -> Unit) {
+private fun MenuRow(
+    title: String,
+    trailing: String = "\u2197",
+    subtitle: String? = null,
+    onClick: () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -81,8 +101,13 @@ private fun MenuRow(title: String, onClick: () -> Unit) {
             .padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, modifier = Modifier.weight(1f))
-        Text("↗", color = MaterialTheme.colorScheme.primary)
+        Column(Modifier.weight(1f)) {
+            Text(title)
+            subtitle?.let {
+                Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Text(trailing, color = MaterialTheme.colorScheme.primary)
     }
 }
 

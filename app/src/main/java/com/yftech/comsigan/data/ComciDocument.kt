@@ -1,5 +1,6 @@
 package com.yftech.comsigan.data
 
+import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -26,11 +27,43 @@ class ComciDocument(json: String) {
 
     fun classCount(grade: Int): Int = classCounts.getOrNull(grade) ?: 0
 
+    // MARK: 주차
+
+    /** 열람할 수 있는 주차 목록. 한 줄이 [r, "26-08-17 ~ 26-08-22"] 형태다. */
+    val weeks: List<ComciWeek>
+        get() {
+            val array = root.optJSONArray("일자자료") ?: return emptyList()
+            return (0 until array.length()).mapNotNull { index ->
+                val row = array.opt(index) as? JSONArray ?: return@mapNotNull null
+                if (row.length() < 2) return@mapNotNull null
+                val r = numeric(row.opt(0))
+                if (r > 0) ComciWeek(r, row.optString(1)) else null
+            }
+        }
+
+    /** 오늘이 속한 주차의 r. */
+    val todayWeek: Int get() = if (root.has("오늘r")) numeric(root.opt("오늘r")) else ComciWeek.FIRST.r
+
+    /** 이 자료가 담고 있는 주의 월요일. 예: "2026-08-10" */
+    val weekStartDate: String get() = root.optString("시작일", "")
+
+    /**
+     * 이 자료가 어느 주차인지. 응답에 r이 없어서 시작일로 목록과 맞춰 본다.
+     * (일자자료 라벨은 "26-08-10 ~ …"처럼 두 자리 연도로 시작한다.)
+     */
+    val week: ComciWeek?
+        get() {
+            val start = weekStartDate.drop(2)
+            if (start.isEmpty()) return null
+            return weeks.firstOrNull { it.label.startsWith(start) }
+        }
+
     private val division: Int get() = if (root.has("분리")) numeric(root.opt("분리")) else 100
     private val usesClassroom: Boolean get() = numeric(root.opt("강의실")) == 1
     private val usesChangeNotice: Boolean get() = numeric(root.opt("변경알림")) == 1
 
-    val periodTimes: List<PeriodTime>
+    /** 학교가 컴시간에 올려 둔 원본 일과시간. 설정 화면에서 "서버 값으로 되돌리기"에 쓴다. */
+    val serverPeriodTimes: List<PeriodTime>
         get() {
             val array = root.optJSONArray("일과시간") ?: return emptyList()
             return (0 until array.length()).mapNotNull { index ->
@@ -48,7 +81,11 @@ class ComciDocument(json: String) {
 
     // MARK: 시간표 생성
 
-    fun timetable(grade: Int, klass: Int): Timetable {
+    /**
+     * [context]를 주면 설정에 저장된 일과시간 보정을 얹는다.
+     * 순수 파서로만 쓸 때(테스트 등)는 빼도 되고, 그때는 서버 자료를 그대로 쓴다.
+     */
+    fun timetable(grade: Int, klass: Int, context: Context? = null): Timetable {
         if (klass < 1 || klass > classCount(grade)) {
             throw ComciException("${grade}학년 ${klass}반 시간표가 없습니다.")
         }
@@ -108,8 +145,12 @@ class ComciDocument(json: String) {
             klass = klass,
             days = days,
             periodCounts = periodCounts,
-            periodTimes = periodTimes,
+            periodTimes = context?.let {
+                AppSettings.resolvedPeriodTimes(it, AppSettings.school(it).code, serverPeriodTimes)
+            } ?: serverPeriodTimes,
             sourceUpdatedAt = sourceUpdatedAt,
+            weekStart = weekStartDate,
+            weekLabel = week?.label.orEmpty(),
         )
     }
 

@@ -20,6 +20,8 @@ import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
+import com.yftech.comsigan.data.DayPhase
+import com.yftech.comsigan.data.DaySegment
 import com.yftech.comsigan.data.School
 import com.yftech.comsigan.data.Timetable
 import com.yftech.comsigan.data.UpcomingClass
@@ -36,6 +38,8 @@ class WidgetRenderScope(
     val palette: WidgetPalette,
     /** 시간표. 아직 못 받아왔으면 null. */
     val timetable: Timetable?,
+    /** 다음 주 표. 이번 주에 남은 수업이 없을 때만 쓴다. */
+    val nextWeekTimetable: Timetable? = null,
     val school: School,
     val grade: Int,
     val klass: Int,
@@ -54,24 +58,27 @@ class WidgetRenderScope(
     /** 오늘 요일(월=0). 주말이면 null. */
     val today: Int? get() = Timetable.dayIndex(now)
 
+    /** 지금이 수업인지 쉬는시간인지 점심인지. */
+    val segment: DaySegment get() = timetable?.segment(now) ?: DaySegment(DayPhase.DONE)
+
     val currentPeriod: Int? get() = timetable?.currentPeriod(now)
 
     val nextPeriod: Int? get() = timetable?.nextPeriod(now)
 
-    /** 지금(없으면 다음) 교시. */
+    /** 지금(없으면 다음) 교시. 쉬는시간이면 곧 시작할 교시를 가리킨다. */
     val focusPeriod: Int? get() = currentPeriod ?: nextPeriod
 
     /**
-     * 다음 등교일까지 넘어가며 앞으로의 수업을 찾는다.
-     * 오늘 일과가 이미 끝났으면(focusPeriod가 없으면) 오늘은 통째로 건너뛴다.
+     * 앞으로의 수업. 오늘 일과가 끝났으면 다음 등교일로,
+     * 이번 주가 끝났으면 다음 주 월요일로 넘어간다.
      */
-    fun upcoming(limit: Int): List<UpcomingClass> =
-        timetable?.upcoming(now, afterPeriod = focusPeriod ?: SKIP_TODAY, limit = limit).orEmpty()
-
-    private companion object {
-        /** 교시 번호보다 크면 오늘은 더 볼 게 없다는 뜻. */
-        const val SKIP_TODAY = 99
-    }
+    fun upcoming(limit: Int): List<UpcomingClass> = Timetable.upcoming(
+        current = timetable,
+        next = nextWeekTimetable,
+        now = now,
+        afterPeriod = focusPeriod ?: Timetable.SKIP_TODAY,
+        limit = limit,
+    )
 
     /** 한 줄에 쓸 수 있는 높이. 넉넉하면 교사명까지 넣는 식으로 쓴다. */
     fun rowHeight(rows: Int): Dp = if (rows > 0) (size.height - 34.dp) / rows else 0.dp

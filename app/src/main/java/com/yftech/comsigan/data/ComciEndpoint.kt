@@ -6,6 +6,21 @@ import java.net.URLEncoder
  * 컴시간 열람 페이지(/st)에 박혀 있는 호출 상수. 컴시간이 갱신되면 값이 바뀌므로
  * 페이지에서 직접 뽑아 쓰고, 실패하면 마지막으로 알려진 값으로 동작한다.
  */
+/**
+ * 열람할 주차. 요청 끝자리 `r`이 이 값이고, 고를 수 있는 주차 목록은
+ * 응답의 `일자자료`가 알려준다(열람 페이지 일자설정하기와 동일).
+ */
+data class ComciWeek(
+    val r: Int,
+    /** 서버가 준 기간 표기. 예: "26-08-17 ~ 26-08-22" */
+    val label: String = "",
+) {
+    companion object {
+        /** 주차를 모르는 상태에서 처음 부를 때 쓰는 값(열람 페이지도 r=1로 시작한다). */
+        val FIRST = ComciWeek(1)
+    }
+}
+
 data class ComciEndpoint(
     /** 자료 요청 경로. 예: "36179" */
     val route: String,
@@ -21,7 +36,7 @@ data class ComciEndpoint(
     }
 
     /** 시간표 URL. `<dataPrefix><학교코드>_0_<주차>`를 base64로 넘긴다. */
-    fun timetableUrl(schoolCode: Int, week: Int = 1): String {
+    fun timetableUrl(schoolCode: Int, week: Int = ComciWeek.FIRST.r): String {
         val payload = "$dataPrefix${schoolCode}_0_$week"
         return "$HOST/$route?${base64(payload.toByteArray(Charsets.UTF_8))}"
     }

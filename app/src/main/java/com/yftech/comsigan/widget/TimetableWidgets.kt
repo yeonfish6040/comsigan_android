@@ -77,13 +77,15 @@ abstract class BaseTimetableWidget(private val slot: WidgetSlot) : GlanceAppWidg
         val app = context.applicationContext
 
         // 캐시가 없거나 오래됐으면 뒤에서 받아 온 뒤 다시 그린다. 화면은 절대 기다리지 않는다.
+        // 이번 주가 끝나 가면 다음 주 자료까지 채운다(금요일 방과 후에 다음 주 월요일을 보여줘야 한다).
         val schoolCode = AppSettings.school(app).code
-        if (ComciService.cachedDocument(app, schoolCode) == null || ComciService.isCacheStale(app, schoolCode)) {
-            CoroutineScope(Dispatchers.IO).launch {
-                runCatching {
-                    ComciService.document(app, schoolCode, forceRefresh = true)
-                    TimetableWidgets.refreshAll(app)
-                }
+        CoroutineScope(Dispatchers.IO).launch {
+            runCatching {
+                val fetched = ComciService.ensureWeeks(
+                    app, schoolCode, AppSettings.grade(app), AppSettings.klass(app)
+                )
+                // 새로 받아온 게 있을 때만 다시 그린다. 늘 그리면 갱신이 끝없이 돈다.
+                if (fetched) TimetableWidgets.refreshAll(app)
             }
         }
 
@@ -99,11 +101,12 @@ abstract class BaseTimetableWidget(private val slot: WidgetSlot) : GlanceAppWidg
             val grade = AppSettings.grade(app)
             val klass = AppSettings.klass(app)
 
-            val document = ComciService.cachedDocument(app, school.code)
-            val timetable = document?.let { runCatching { it.timetable(grade, klass) }.getOrNull() }
+            val weeks = ComciService.cachedWeeks(app, school.code)
+            val timetable = weeks?.current?.let { runCatching { it.timetable(grade, klass, app) }.getOrNull() }
+            val nextWeekTimetable = weeks?.next?.let { runCatching { it.timetable(grade, klass, app) }.getOrNull() }
             val status = when {
                 timetable != null -> null
-                document == null -> "시간표를 받는 중…"
+                weeks == null -> "시간표를 받는 중…"
                 else -> "${grade}학년 ${klass}반 시간표가 없습니다"
             }
 
@@ -114,6 +117,7 @@ abstract class BaseTimetableWidget(private val slot: WidgetSlot) : GlanceAppWidg
                         size = LocalSize.current,
                         palette = palette,
                         timetable = timetable,
+                        nextWeekTimetable = nextWeekTimetable,
                         school = school,
                         grade = grade,
                         klass = klass,

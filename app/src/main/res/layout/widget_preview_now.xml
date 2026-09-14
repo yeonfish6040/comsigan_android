@@ -47,7 +47,8 @@
         android:textSize="11sp"
         android:textColor="@color/preview_muted" />
 
-    <View
+    <!-- 미리보기는 RemoteViews로 부풀려지므로 android.view.View는 쓸 수 없다(허용 목록 밖). -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
