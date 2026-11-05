@@ -21,21 +21,25 @@ object ComciService {
         val query = name.trim()
         if (query.length < 2) return@withContext emptyList()
 
-        val bytes = Http.getBytes(endpoint(context).searchUrl(query))
-        val root = runCatching { JSONObject(Http.sanitizedJson(bytes)) }.getOrNull()
-            ?: throw ComciException("검색 결과를 해석하지 못했습니다.")
-        val rows = root.optJSONArray("학교검색") ?: return@withContext emptyList()
+        withEndpoint(context) { endpoint ->
+            parseSchools(Http.sanitizedJson(Http.getBytes(endpoint.searchUrl(query))))
+        }
+    }
 
-        // 한 줄이 [내부코드, 지역, 학교명, 학교코드] 형태다.
-        (0 until rows.length()).mapNotNull { index ->
+    /** 학교코드의 위치도 서버가 한 줄마다 지정한다(열람 페이지 sc_disp와 동일). */
+    fun parseSchools(json: String): List<School> {
+        val rows = JSONObject(json).optJSONArray("학교검색")
+            ?: throw ComciException("검색 결과를 해석하지 못했습니다.")
+        return (0 until rows.length()).mapNotNull { index ->
             val row = rows.opt(index) as? JSONArray ?: return@mapNotNull null
-            if (row.length() < 4) return@mapNotNull null
+            val codeIndex = ComciDocument.numeric(row.opt(0)) / 6347 + 2
+            if (codeIndex < 3 || codeIndex >= row.length()) return@mapNotNull null
             School(
-                code = ComciDocument.numeric(row.opt(3)),
+                code = ComciDocument.numeric(row.opt(codeIndex)),
                 name = row.optString(2),
                 region = row.optString(1),
-            )
-        }.filter { it.code > 0 }
+            ).takeIf { it.code > 0 }
+        }
     }
 
     // MARK: 시간표
@@ -47,7 +51,8 @@ object ComciService {
         klass: Int,
         week: ComciWeek = ComciWeek.FIRST,
         forceRefresh: Boolean = false,
-    ): Timetable = document(context, school, week, forceRefresh).timetable(grade, klass, context)
+    ): Timetable = document(context, school, week, forceRefresh)
+        .timetable(grade, klass, context, schoolCode = school)
 
     suspend fun document(
         context: Context,
@@ -60,10 +65,13 @@ object ComciService {
         }
 
         try {
-            val json = Http.sanitizedJson(Http.getBytes(endpoint(context).timetableUrl(school, week.r)))
-            val document = ComciDocument(json) // 파싱에 성공한 것만 캐시한다
-            cacheFile(context, school, week).writeText(json)
-            document
+            withEndpoint(context) { endpoint ->
+                val bytes = Http.getBytes(endpoint.timetableUrl(school, week.r))
+                val json = ComciResponse.timetableJson(bytes, endpoint)
+                val document = ComciDocument(json) // 복호화와 파싱에 성공한 것만 캐시한다
+                cacheFile(context, school, week).writeText(json)
+                document
+            }
         } catch (error: Exception) {
             // 네트워크가 끊겼으면 기한이 지난 캐시라도 쓴다.
             val stale = cached(context, school, week, ignoreAge = true) ?: throw error
@@ -121,7 +129,9 @@ object ComciService {
             document(context, school, todayWeek, forceRefresh = true)
         }
 
-        val timetable = runCatching { current.timetable(grade, klass, context) }.getOrNull() ?: return@withContext fetched
+        val timetable = runCatching {
+            current.timetable(grade, klass, context, schoolCode = school)
+        }.getOrNull() ?: return@withContext fetched
         val after = timetable.focusPeriod(now) ?: Timetable.SKIP_TODAY
         if (timetable.upcoming(now, after, lookahead).size >= lookahead) return@withContext fetched
 
@@ -162,17 +172,31 @@ object ComciService {
 
     // MARK: 호출 상수
 
-    private fun endpoint(context: Context): ComciEndpoint {
+    private fun <T> withEndpoint(context: Context, request: (ComciEndpoint) -> T): T {
+        val initial = endpoint(context)
+        return try {
+            request(initial)
+        } catch (error: Exception) {
+            // 호출 상수는 캐시 유효 기간 중에도 바뀔 수 있다. 실패 시 페이지를 다시 읽고 한 번 재시도한다.
+            request(endpoint(context, forceRefresh = true))
+        }
+    }
+
+    private fun endpoint(context: Context, forceRefresh: Boolean = false): ComciEndpoint {
         val prefs = AppSettings.prefs(context)
         val stored = prefs.getString(AppSettings.KEY_ENDPOINT, null)
         val checkedAt = prefs.getLong(AppSettings.KEY_ENDPOINT_CHECKED_AT, 0)
-        if (stored != null && System.currentTimeMillis() - checkedAt < ENDPOINT_LIFETIME_MS) {
+        if (!forceRefresh && stored != null && System.currentTimeMillis() - checkedAt < ENDPOINT_LIFETIME_MS) {
             runCatching {
                 val json = JSONObject(stored)
                 return ComciEndpoint(
                     route = json.getString("route"),
                     searchPrefix = json.getString("searchPrefix"),
                     dataPrefix = json.getString("dataPrefix"),
+                    decryptionKey = json.getString("decryptionKey"),
+                    dataKeys = json.getJSONObject("dataKeys").let { keys ->
+                        keys.keys().asSequence().associateWith { keys.getString(it) }
+                    },
                 )
             }
         }
@@ -182,6 +206,8 @@ object ComciService {
             .put("route", discovered.route)
             .put("searchPrefix", discovered.searchPrefix)
             .put("dataPrefix", discovered.dataPrefix)
+            .put("decryptionKey", discovered.decryptionKey)
+            .put("dataKeys", JSONObject(discovered.dataKeys))
             .toString()
         prefs.edit()
             .putString(AppSettings.KEY_ENDPOINT, encoded)

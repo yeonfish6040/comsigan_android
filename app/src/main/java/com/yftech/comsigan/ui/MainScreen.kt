@@ -33,6 +33,7 @@ private enum class MainTab(val label: String) {
 fun MainScreen() {
     val context = LocalContext.current
     var tab by remember { mutableStateOf(MainTab.TIMETABLE) }
+    var timetableRefreshKey by remember { mutableStateOf(0) }
     val anchors = rememberTutorialAnchors()
     var showTutorial by remember { mutableStateOf(!AppSettings.isTutorialDone(context)) }
 
@@ -64,11 +65,11 @@ fun MainScreen() {
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (tab) {
-                MainTab.TIMETABLE -> TimetableScreen()
+                MainTab.TIMETABLE -> TimetableScreen(reloadKey = timetableRefreshKey)
                 MainTab.WIDGET -> WidgetSettingsScreen(
                     onChanged = { TimetableWidgets.requestRefresh(context) },
                 )
-                MainTab.ABOUT -> AboutScreen()
+                MainTab.ABOUT -> AboutScreen(onScheduleSaved = { timetableRefreshKey++ })
             }
         }
     }

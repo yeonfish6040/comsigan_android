@@ -32,13 +32,16 @@ private const val PRIVACY_POLICY_URL =
     "https://sneaky-parrot-647.notion.site/3bb874aebd068010b5f4e988af1a677f"
 
 @Composable
-fun AboutScreen() {
+fun AboutScreen(onScheduleSaved: () -> Unit = {}) {
     val context = LocalContext.current
     val school = AppSettings.school(context)
     var showScheduleEditor by remember { mutableStateOf(false) }
 
     if (showScheduleEditor) {
-        ScheduleEditorDialog(onDismiss = { showScheduleEditor = false })
+        ScheduleEditorDialog(
+            onDismiss = { showScheduleEditor = false },
+            onSaved = onScheduleSaved,
+        )
     }
 
     Column(

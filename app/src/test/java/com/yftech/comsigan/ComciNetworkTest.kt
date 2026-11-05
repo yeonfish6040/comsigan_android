@@ -2,10 +2,10 @@ package com.yftech.comsigan
 
 import com.yftech.comsigan.data.ComciDocument
 import com.yftech.comsigan.data.ComciEndpoint
+import com.yftech.comsigan.data.ComciResponse
+import com.yftech.comsigan.data.ComciService
 import com.yftech.comsigan.data.Http
 import com.yftech.comsigan.data.School
-import org.json.JSONArray
-import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -36,7 +36,7 @@ class ComciNetworkTest {
         assertTrue("검색 결과가 없음", schools.isNotEmpty())
 
         val school = schools.first()
-        val json = Http.sanitizedJson(Http.getBytes(endpoint.timetableUrl(school.code)))
+        val json = ComciResponse.timetableJson(Http.getBytes(endpoint.timetableUrl(school.code)), endpoint)
         val document = ComciDocument(json)
         val timetable = document.timetable(1, 1)
         val monday = timetable.days[0].filter { !it.isEmpty }.map { it.displaySubject }
@@ -47,12 +47,6 @@ class ComciNetworkTest {
     }
 
     private fun search(endpoint: ComciEndpoint, query: String): List<School> {
-        val root = JSONObject(Http.sanitizedJson(Http.getBytes(endpoint.searchUrl(query))))
-        val rows = root.optJSONArray("학교검색") ?: return emptyList()
-        return (0 until rows.length()).mapNotNull { index ->
-            val row = rows.opt(index) as? JSONArray ?: return@mapNotNull null
-            if (row.length() < 4) return@mapNotNull null
-            School(ComciDocument.numeric(row.opt(3)), row.optString(2), row.optString(1))
-        }
+        return ComciService.parseSchools(Http.sanitizedJson(Http.getBytes(endpoint.searchUrl(query))))
     }
 }

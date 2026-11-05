@@ -102,8 +102,12 @@ abstract class BaseTimetableWidget(private val slot: WidgetSlot) : GlanceAppWidg
             val klass = AppSettings.klass(app)
 
             val weeks = ComciService.cachedWeeks(app, school.code)
-            val timetable = weeks?.current?.let { runCatching { it.timetable(grade, klass, app) }.getOrNull() }
-            val nextWeekTimetable = weeks?.next?.let { runCatching { it.timetable(grade, klass, app) }.getOrNull() }
+            val timetable = weeks?.current?.let {
+                runCatching { it.timetable(grade, klass, app, schoolCode = school.code) }.getOrNull()
+            }
+            val nextWeekTimetable = weeks?.next?.let {
+                runCatching { it.timetable(grade, klass, app, schoolCode = school.code) }.getOrNull()
+            }
             val status = when {
                 timetable != null -> null
                 weeks == null -> "시간표를 받는 중…"

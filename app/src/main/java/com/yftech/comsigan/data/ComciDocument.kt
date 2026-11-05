@@ -85,7 +85,12 @@ class ComciDocument(json: String) {
      * [context]를 주면 설정에 저장된 일과시간 보정을 얹는다.
      * 순수 파서로만 쓸 때(테스트 등)는 빼도 되고, 그때는 서버 자료를 그대로 쓴다.
      */
-    fun timetable(grade: Int, klass: Int, context: Context? = null): Timetable {
+    fun timetable(
+        grade: Int,
+        klass: Int,
+        context: Context? = null,
+        schoolCode: Int? = null,
+    ): Timetable {
         if (klass < 1 || klass > classCount(grade)) {
             throw ComciException("${grade}학년 ${klass}반 시간표가 없습니다.")
         }
@@ -146,7 +151,8 @@ class ComciDocument(json: String) {
             days = days,
             periodCounts = periodCounts,
             periodTimes = context?.let {
-                AppSettings.resolvedPeriodTimes(it, AppSettings.school(it).code, serverPeriodTimes)
+                val code = schoolCode ?: AppSettings.school(it).code
+                AppSettings.resolvedPeriodTimes(it, code, serverPeriodTimes)
             } ?: serverPeriodTimes,
             sourceUpdatedAt = sourceUpdatedAt,
             weekStart = weekStartDate,

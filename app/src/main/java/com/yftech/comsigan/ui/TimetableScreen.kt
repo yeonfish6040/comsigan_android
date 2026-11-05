@@ -59,7 +59,7 @@ private val ChangedColor = Color(0xFFE8871A)
 private val ChangedContainer = Color(0xFFFFE7C7)
 
 @Composable
-fun TimetableScreen() {
+fun TimetableScreen(reloadKey: Int = 0) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -102,7 +102,7 @@ fun TimetableScreen() {
                     didPickWeek = true
                     selectedWeek = document.todayWeek
                 }
-                timetable = document.timetable(grade, klass, context)
+                timetable = document.timetable(grade, klass, context, schoolCode = school.code)
                 errorText = null
                 TimetableWidgets.requestRefresh(context)
             } catch (error: Exception) {
@@ -112,7 +112,7 @@ fun TimetableScreen() {
         }
     }
 
-    LaunchedEffect(school.code, grade, klass, selectedWeek) { load() }
+    LaunchedEffect(school.code, grade, klass, selectedWeek, reloadKey) { load() }
 
     if (showSearch) {
         SchoolSearchDialog(

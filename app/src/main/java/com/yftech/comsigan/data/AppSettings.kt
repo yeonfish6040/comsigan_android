@@ -13,7 +13,7 @@ object AppSettings {
     private const val KEY_TUTORIAL_DONE = "tutorialDone"
     private const val KEY_LAYOUT_PREFIX = "widgetLayout_"
     private const val KEY_PERIOD_TIMES_PREFIX = "periodTimes_"
-    const val KEY_ENDPOINT = "endpoint"
+    const val KEY_ENDPOINT = "endpointV2"
     const val KEY_ENDPOINT_CHECKED_AT = "endpointCheckedAt"
 
     /** 처음 실행 시 기본으로 보는 학교(검색 결과의 이름·코드 그대로). */
@@ -89,7 +89,7 @@ object AppSettings {
         return times.ifEmpty { null }?.sortedBy { it.period }
     }
 
-    /** null이나 빈 목록을 넣으면 보정을 지우고 다시 서버 자료를 따른다. */
+    /** null이나 빈 목록을 넣으면 사용자 보정을 지우고 기본 보정값 또는 서버 자료를 따른다. */
     fun setPeriodTimes(context: Context, school: Int, times: List<PeriodTime>?) {
         val key = KEY_PERIOD_TIMES_PREFIX + school
         val editor = prefs(context).edit()

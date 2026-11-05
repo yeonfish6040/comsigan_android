@@ -40,7 +40,7 @@ import com.yftech.comsigan.widget.TimetableWidgets
  * 다를 때 쓴다. 저장한 값은 앱과 위젯이 함께 본다.
  */
 @Composable
-fun ScheduleEditorDialog(onDismiss: () -> Unit) {
+fun ScheduleEditorDialog(onDismiss: () -> Unit, onSaved: () -> Unit = {}) {
     val context = LocalContext.current
     val school = remember { AppSettings.school(context) }
 
@@ -144,13 +144,14 @@ fun ScheduleEditorDialog(onDismiss: () -> Unit) {
             TextButton(
                 enabled = !isLoading,
                 onClick = {
-                    // 서버 값과 같아졌으면 보정을 들고 있을 이유가 없다.
+                    // 서버 값으로 되돌린 경우도 명시적인 선택이다. 지우면 기본 보정값이 다시 적용된다.
                     AppSettings.setPeriodTimes(
                         context,
                         school.code,
-                        if (times == serverTimes) null else times,
+                        times,
                     )
                     TimetableWidgets.requestRefresh(context)
+                    onSaved()
                     onDismiss()
                 },
             ) { Text("저장") }
