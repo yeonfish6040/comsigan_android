@@ -22,22 +22,25 @@ object ComciService {
         if (query.length < 2) return@withContext emptyList()
 
         withEndpoint(context) { endpoint ->
-            parseSchools(ComciResponse.json(Http.getBytes(endpoint.searchUrl(query)), endpoint))
+            parseSchools(ComciResponse.json(Http.getBytes(endpoint.searchUrl(query)), endpoint), endpoint.config)
         }
     }
 
     /** 학교코드의 위치도 서버가 한 줄마다 지정한다(열람 페이지 sc_disp와 동일). */
-    fun parseSchools(json: String): List<School> {
-        val rows = JSONObject(json).optJSONArray("학교검색")
+    fun parseSchools(json: String, config: ComciProtocolConfig = ComciProtocolConfig.bundled): List<School> {
+        val rows = JSONObject(json).optJSONArray(config.schoolRoot)
             ?: throw ComciException("검색 결과를 해석하지 못했습니다.")
         return (0 until rows.length()).mapNotNull { index ->
             val row = rows.opt(index) as? JSONArray ?: return@mapNotNull null
-            val codeIndex = ComciDocument.numeric(row.opt(0)) / 6347 + 2
-            if (codeIndex < 3 || codeIndex >= row.length()) return@mapNotNull null
+            val marker = ComciDocument.numeric(row.opt(config.schoolField("markerIndex")))
+            if (marker < 0) return@mapNotNull null
+            val index = marker.toLong() / config.schoolField("codeDivisor") + config.schoolField("codeOffset")
+            if (index < 0 || index >= row.length()) return@mapNotNull null
+            val codeIndex = index.toInt()
             School(
                 code = ComciDocument.numeric(row.opt(codeIndex)),
-                name = row.optString(2),
-                region = row.optString(1),
+                name = row.optString(config.schoolField("nameIndex")),
+                region = row.optString(config.schoolField("regionIndex")),
             ).takeIf { it.code > 0 }
         }
     }
@@ -173,40 +176,46 @@ object ComciService {
     // MARK: 호출 상수
 
     private fun <T> withEndpoint(context: Context, request: (ComciEndpoint) -> T): T {
-        val initial = endpoint(context)
-        return try {
-            request(initial)
-        } catch (error: Exception) {
-            // 호출 상수는 캐시 유효 기간 중에도 바뀔 수 있다. 실패 시 페이지를 다시 읽고 한 번 재시도한다.
-            request(endpoint(context, forceRefresh = true))
+        val store = ComciProtocolStore.shared(context)
+        var lastError: Exception = ComciException("시간표 연결 설정을 불러오지 못했습니다.")
+        for (refresh in listOf(false, true)) {
+            for (config in store.candidates(forceRefresh = refresh)) {
+                try {
+                    val result = request(endpoint(context, config, forceRefresh = refresh))
+                    store.markWorking(config)
+                    return result
+                } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+                catch (error: Exception) {
+                    lastError = error
+                    store.rejectCandidate(config)
+                }
+            }
         }
+        throw lastError
     }
 
-    private fun endpoint(context: Context, forceRefresh: Boolean = false): ComciEndpoint {
+    private fun endpoint(context: Context, config: ComciProtocolConfig, forceRefresh: Boolean = false): ComciEndpoint {
+        if (!config.discoveryEnabled) return config.fixedEndpoint()
         val prefs = AppSettings.prefs(context)
-        val stored = prefs.getString(AppSettings.KEY_ENDPOINT, null)
-        val checkedAt = prefs.getLong(AppSettings.KEY_ENDPOINT_CHECKED_AT, 0)
+        val key = "configuredComciEndpointV1"
+        val stored = prefs.getString(key, null)
+        val checkedAt = prefs.getLong(key + "CheckedAt", 0)
         if (!forceRefresh && stored != null && System.currentTimeMillis() - checkedAt < ENDPOINT_LIFETIME_MS) {
             runCatching {
                 val json = JSONObject(stored)
+                require(json.getString("configId") == config.cacheId)
                 return ComciEndpoint(
-                    route = json.getString("route"),
-                    searchPrefix = json.getString("searchPrefix"),
-                    dataPrefix = json.getString("dataPrefix"),
-                    decryptionKey = json.getString("decryptionKey"),
-                    responseFormat = json.getString("responseFormat"),
-                    encodedSearch = json.getBoolean("encodedSearch"),
-                    dataKeys = json.getJSONObject("dataKeys").let { keys ->
-                        keys.keys().asSequence().associateWith { keys.getString(it) }
-                    },
+                    route = json.getString("route"), searchPrefix = json.getString("searchPrefix"),
+                    dataPrefix = json.getString("dataPrefix"), decryptionKey = json.getString("decryptionKey"),
+                    responseFormat = json.getString("responseFormat"), encodedSearch = json.getBoolean("encodedSearch"),
+                    dataKeys = json.getJSONObject("dataKeys").let { keys -> keys.keys().asSequence().associateWith { keys.getString(it) } },
+                    protocolConfig = config,
                 )
             }
         }
-
-        // 형식 해석 실패를 오래된 상수 요청으로 감추면 EOF/연결 끊김으로 오해하게 된다.
-        // 실패는 호출자에게 넘기고, 시간표 호출자는 기존 디스크 캐시를 사용할 수 있다.
-        val discovered = ComciEndpoint.discover()
+        val discovered = ComciEndpoint.discover(config)
         val encoded = JSONObject()
+            .put("configId", config.cacheId)
             .put("route", discovered.route)
             .put("searchPrefix", discovered.searchPrefix)
             .put("dataPrefix", discovered.dataPrefix)
@@ -216,8 +225,8 @@ object ComciService {
             .put("dataKeys", JSONObject(discovered.dataKeys))
             .toString()
         prefs.edit()
-            .putString(AppSettings.KEY_ENDPOINT, encoded)
-            .putLong(AppSettings.KEY_ENDPOINT_CHECKED_AT, System.currentTimeMillis())
+            .putString(key, encoded)
+            .putLong(key + "CheckedAt", System.currentTimeMillis())
             .apply()
         return discovered
     }

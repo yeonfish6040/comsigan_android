@@ -35,21 +35,21 @@ data class ComciEndpoint(
     val dataKeys: Map<String, String> = DEFAULT_DATA_KEYS,
     val responseFormat: String = "enc2",
     val encodedSearch: Boolean = false,
+    val protocolConfig: ComciProtocolConfig? = null,
 ) {
-    /** enc5 검색은 UTF-8 퍼센트 인코딩한 검색어를 요청 전체와 함께 base64로 감싼다. */
+    val config get() = protocolConfig ?: ComciProtocolConfig.bundled
     fun searchUrl(query: String): String {
-        val token = if (encodedSearch) {
-            encodeURIComponent(base64((searchPrefix + encodeURIComponent(query) + "_" + responseFormat).toByteArray(Charsets.UTF_8)))
-        } else {
-            searchPrefix + URLEncoder.encode(query, "EUC-KR")
-        }
-        return "$HOST/$route?$token"
+        val token = config.requestToken(if (encodedSearch) "search" else "legacySearch", variables(query = query))
+        return "${config.baseUrl}/$route?$token"
     }
-
     fun timetableUrl(schoolCode: Int, week: Int = ComciWeek.FIRST.r): String {
-        val payload = "$dataPrefix${schoolCode}_0_${week}_$responseFormat"
-        return "$HOST/$route?${base64(payload.toByteArray(Charsets.UTF_8))}"
+        val token = config.requestToken("timetable", variables(school = schoolCode, week = week))
+        return "${config.baseUrl}/$route?$token"
     }
+    private fun variables(query: String = "", school: Int = 0, week: Int = 1) = mapOf(
+        "query" to query, "school" to school.toString(), "week" to week.toString(), "format" to responseFormat,
+        "searchPrefix" to searchPrefix, "dataPrefix" to dataPrefix,
+    )
 
     companion object {
         const val HOST = "http://comci.net:4082"
@@ -60,17 +60,9 @@ data class ComciEndpoint(
         )
         const val DEFAULT_DECRYPTION_KEY = "6f428ea903c751d0b82f649d1e703ac5d4892fb601e8c347a5d09b2cf316784e"
 
-        val FALLBACK = ComciEndpoint(
-            route = "952563", searchPrefix = "21326l", dataPrefix = "10893_",
-            decryptionKey = "08061397ca3616e62f72c905b1ca6a0dda0584b7e357507831f0175668e165bd",
-            dataKeys = mapOf(
-                "자료147" to "자료112", "자료481" to "자료199", "자료446" to "자료102",
-                "자료492" to "자료142", "자료245" to "자료145", "자료244" to "자료162",
-            ),
-            responseFormat = "enc5", encodedSearch = true,
-        )
+        val FALLBACK: ComciEndpoint by lazy { ComciProtocolConfig.bundled.fixedEndpoint() }
 
-        private fun encodeURIComponent(value: String): String = buildString {
+        internal fun encodeURIComponent(value: String): String = buildString {
             for (byte in value.toByteArray(Charsets.UTF_8)) {
                 val code = byte.toInt() and 255
                 if (code in 65..90 || code in 97..122 || code in 48..57 || code.toChar() in "-_.!~*'()") {
@@ -101,18 +93,13 @@ data class ComciEndpoint(
             return out.toString()
         }
 
-        private val ROUTE = Regex("""\./(\d+)\?""")
-        private val SEARCH_PREFIX = Regex("""(?:\?|btoa\(['"])(\d+l)['"]""")
-        private val DATA_PREFIX = Regex("""sc_data\('(\d+_)'""")
-
-        private val KEY = Regex("""var\s+key\s*=\s*CryptoJS\.enc\.Hex\.parse\(['"]([0-9a-f]{64})['"]\)""")
-        private val PACKED_SCRIPT = Regex("""\}\)\((\[\[.*?\]\]),\s*(\d+)\);""", RegexOption.DOT_MATCHES_ALL)
-
         /** 중첩된 hour-obfuscated 문자열을 복원한다. JavaScript는 실행하지 않는다. */
-        fun decodedPage(html: String): String {
+        fun decodedPage(html: String, config: ComciProtocolConfig = ComciProtocolConfig.bundled): String {
+            require(html.length <= 2_000_000)
+            val packedScript = Regex(config.wrapperPattern, RegexOption.DOT_MATCHES_ALL)
             var script = html
-            repeat(8) {
-                val matches = PACKED_SCRIPT.findAll(script).toList()
+            repeat(config.maxDepth) {
+                val matches = packedScript.findAll(script).toList()
                 if (matches.isEmpty()) return script
                 for (match in matches.asReversed()) {
                     val blocks = JSONArray(match.groupValues[1])
@@ -139,41 +126,40 @@ data class ComciEndpoint(
             throw ComciException("시간표 서버의 요청 형식을 확인하지 못했습니다.")
         }
 
-        private fun decryptionKey(script: String): String {
-            KEY.find(script)?.groupValues?.get(1)?.let { return it }
+        private fun decryptionKey(script: String, config: ComciProtocolConfig): String {
+            for (pattern in config.patterns("key")) Regex(pattern).find(script)?.groupValues?.get(1)?.let { return it }
             // 공개 페이지의 조각 재배열만 해석한다. 임의 표현식은 평가하지 않는다.
-            val pattern = Regex("""CryptoJS\.enc\.Hex\.parse\(\(function\(a\)\{return\s+((?:a\[\d+\]\+)*a\[\d+\]);\}\)\((\[[^]]+\])\)\)""")
+            val pattern = Regex(config.splitKeyPattern)
             val match = pattern.find(script) ?: throw ComciException("시간표 서버의 요청 형식을 확인하지 못했습니다.")
             val pieces = JSONArray(match.groupValues[2])
-            val order = Regex("""a\[(\d+)\]""").findAll(match.groupValues[1])
+            val order = Regex(config.keyIndexPattern).findAll(match.groupValues[1])
             val key = order.joinToString("") { pieces.getString(it.groupValues[1].toInt()) }
             require(Regex("[0-9a-f]{64}").matches(key)) { "Invalid timetable key" }
             return key
         }
 
-        fun fromPage(html: String): ComciEndpoint {
-            val script = decodedPage(html)
-            fun required(pattern: Regex): String = pattern.find(script)?.groupValues?.get(1)
-                ?: throw ComciException("시간표 서버의 요청 형식을 확인하지 못했습니다.")
+        fun fromPage(html: String, config: ComciProtocolConfig = ComciProtocolConfig.bundled): ComciEndpoint {
+            val script = decodedPage(html, config)
+            fun required(name: String): String {
+                for (pattern in config.patterns(name)) Regex(pattern).find(script)?.groupValues?.get(1)?.let { return it }
+                throw ComciException("시간표 서버의 요청 형식을 확인하지 못했습니다.")
+            }
+            val fields = config.fixedEndpoint().dataKeys + config.fieldPatterns.mapValues { (_, pattern) ->
+                Regex(pattern).find(script)?.groupValues?.get(1)
+                    ?: throw ComciException("시간표 서버의 요청 형식을 확인하지 못했습니다.")
+            }
             return ComciEndpoint(
-                route = required(ROUTE),
-                searchPrefix = required(SEARCH_PREFIX),
-                dataPrefix = required(DATA_PREFIX),
-                decryptionKey = decryptionKey(script),
-                responseFormat = Regex("""_(enc\d+)['"]""").find(script)?.groupValues?.get(1) ?: "enc2",
-                encodedSearch = Regex("""btoa\(['"]\d+l['"]\s*\+\s*encodeURIComponent\(""").containsMatchIn(script),
-                dataKeys = mapOf(
-                    "자료147" to required(Regex("""일일자료\s*=\s*Q자료\(자료\.(자료\d+)""")),
-                    "자료481" to required(Regex("""원자료\s*=\s*Q자료\(자료\.(자료\d+)""")),
-                    "자료446" to required(Regex("""성명\s*=\s*Q성명\(자료\.(자료\d+)""")),
-                    "자료492" to required(Regex("""과목명\s*=\s*Q과목명\(자료\.(자료\d+)""")),
-                    "자료245" to required(Regex("""var\s+m3\s*=\s*자료\.(자료\d+)""")),
-                    "자료244" to required(Regex("""수정일: ['"]\s*\+\s*H시간표\.(자료\d+)""")),
-                ),
+                route = required("route"), searchPrefix = required("searchPrefix"), dataPrefix = required("dataPrefix"),
+                decryptionKey = decryptionKey(script, config),
+                responseFormat = config.patterns("format").firstNotNullOfOrNull { Regex(it).find(script)?.groupValues?.get(1) } ?: "enc2",
+                encodedSearch = Regex(config.encodedSearchPattern).containsMatchIn(script),
+                dataKeys = fields, protocolConfig = config,
             )
         }
 
-        /** 열람 페이지를 긁어 상수를 갱신한다. */
-        fun discover(): ComciEndpoint = fromPage(Http.getString("$HOST/st", charset = "EUC-KR"))
+        fun discover(config: ComciProtocolConfig = ComciProtocolConfig.bundled): ComciEndpoint =
+            if (!config.discoveryEnabled) config.fixedEndpoint()
+            else fromPage(Http.getString(config.discoveryUrl, charset = config.discoveryCharset), config)
+
     }
 }

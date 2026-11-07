@@ -14,11 +14,16 @@ object ComciResponse {
     /** 학교 검색도 enc5 봉투를 사용하므로 시간표 스키마 검사와 복호화를 나눈다. */
     fun json(bytes: ByteArray, endpoint: ComciEndpoint): String {
         val text = bytes.toString(Charsets.UTF_8).trimEnd('\u0000')
-        if (!text.startsWith("enc")) return Http.sanitizedJson(bytes)
+        if (!text.startsWith("enc")) {
+            if (!endpoint.config.allowPlaintext) throw ComciException("시간표 자료를 복호화하지 못했습니다.")
+            return Http.sanitizedJson(bytes)
+        }
         try {
             val parts = text.split(':')
-            require(parts.size == 4 && parts[0] in listOf("enc1", "enc2", endpoint.responseFormat))
-            val base64 = parts[0] != "enc1"
+            val hexFormats = endpoint.config.hexFormats(endpoint.responseFormat)
+            val base64Formats = endpoint.config.base64Formats(endpoint.responseFormat)
+            require(parts.size == 4 && parts[0] in hexFormats + base64Formats)
+            val base64 = parts[0] in base64Formats
             val binary = parts.drop(1).map { value ->
                 if (base64) decodeBase64(value) else decodeHex(value)
             }
@@ -41,9 +46,6 @@ object ComciResponse {
 
     private fun normalize(json: String, endpoint: ComciEndpoint): String {
         val root = JSONObject(json)
-        if (root.optJSONArray("학급수") == null) {
-            throw ComciException("시간표 자료를 해석하지 못했습니다.")
-        }
         // 필드 이름이 다시 바뀌면 빈 시간표를 정상 자료로 캐시하지 않고 요청 형식을 재탐색한다.
         // 예전 고정 이름이 우연히 응답에 있어도, 현재 페이지가 지정한 원본 배열을 확인해야 한다.
         for (canonical in listOf("자료147", "자료481", "자료446", "자료492")) {
@@ -56,6 +58,9 @@ object ComciResponse {
             if (root.has(remote)) canonical to root.get(remote) else null
         }
         for ((canonical, value) in values) root.put(canonical, value)
+        if (root.optJSONArray("학급수") == null) {
+            throw ComciException("시간표 자료를 해석하지 못했습니다.")
+        }
         return root.toString()
     }
 
