@@ -1,6 +1,8 @@
 package com.yftech.comsigan.data
 
 import java.io.ByteArrayOutputStream
+import java.io.EOFException
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -21,6 +23,17 @@ object Http {
             val buffer = ByteArrayOutputStream()
             connection.inputStream.use { it.copyTo(buffer) }
             return buffer.toByteArray()
+        } catch (error: IOException) {
+            val endedBeforeResponse = generateSequence<Throwable>(error) { it.cause }.take(16).any { cause ->
+                val message = cause.message.orEmpty().lowercase()
+                cause is EOFException || "unexpected end of stream" in message || "unexpected end of file" in message
+            }
+            val message = if (endedBeforeResponse) {
+                "시간표 서버가 응답 전에 연결을 종료했습니다. 잠시 후 다시 시도해 주세요."
+            } else {
+                "시간표 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요."
+            }
+            throw ComciException(message, error)
         } finally {
             connection.disconnect()
         }

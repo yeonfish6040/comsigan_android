@@ -31,7 +31,7 @@ class ComciNetworkTest {
         println("endpoint = $endpoint")
         assertTrue(endpoint.route.isNotEmpty())
 
-        val schools = search(endpoint, "디지털미디어")
+        val schools = search(endpoint, "한국디")
         println("검색 결과 = $schools")
         assertTrue("검색 결과가 없음", schools.isNotEmpty())
 
@@ -47,6 +47,6 @@ class ComciNetworkTest {
     }
 
     private fun search(endpoint: ComciEndpoint, query: String): List<School> {
-        return ComciService.parseSchools(Http.sanitizedJson(Http.getBytes(endpoint.searchUrl(query))))
+        return ComciService.parseSchools(ComciResponse.json(Http.getBytes(endpoint.searchUrl(query)), endpoint))
     }
 }

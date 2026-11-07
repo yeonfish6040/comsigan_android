@@ -7,15 +7,18 @@ import javax.crypto.Mac
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-/** 열람 페이지의 enc1(hex)/enc2(base64) 응답. 인증에 성공한 자료만 복호화한다. */
+/** 열람 페이지의 enc1(hex) 및 공개 요청 형식에 지정된 base64 응답. 인증에 성공한 자료만 복호화한다. */
 object ComciResponse {
-    fun timetableJson(bytes: ByteArray, endpoint: ComciEndpoint): String {
+    fun timetableJson(bytes: ByteArray, endpoint: ComciEndpoint): String = normalize(json(bytes, endpoint), endpoint)
+
+    /** 학교 검색도 enc5 봉투를 사용하므로 시간표 스키마 검사와 복호화를 나눈다. */
+    fun json(bytes: ByteArray, endpoint: ComciEndpoint): String {
         val text = bytes.toString(Charsets.UTF_8).trimEnd('\u0000')
-        if (!text.startsWith("enc1:") && !text.startsWith("enc2:")) return normalize(Http.sanitizedJson(bytes), endpoint)
+        if (!text.startsWith("enc")) return Http.sanitizedJson(bytes)
         try {
             val parts = text.split(':')
-            require(parts.size == 4)
-            val base64 = parts[0] == "enc2"
+            require(parts.size == 4 && parts[0] in listOf("enc1", "enc2", endpoint.responseFormat))
+            val base64 = parts[0] != "enc1"
             val binary = parts.drop(1).map { value ->
                 if (base64) decodeBase64(value) else decodeHex(value)
             }
@@ -30,7 +33,7 @@ object ComciResponse {
             val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding").apply {
                 init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(iv))
             }
-            return normalize(Http.sanitizedJson(cipher.doFinal(ciphertext)), endpoint)
+            return Http.sanitizedJson(cipher.doFinal(ciphertext))
         } catch (error: Exception) {
             throw ComciException("시간표 자료를 복호화하지 못했습니다.")
         }

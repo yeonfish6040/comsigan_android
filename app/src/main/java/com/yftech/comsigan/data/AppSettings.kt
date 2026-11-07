@@ -13,7 +13,7 @@ object AppSettings {
     private const val KEY_TUTORIAL_DONE = "tutorialDone"
     private const val KEY_LAYOUT_PREFIX = "widgetLayout_"
     private const val KEY_PERIOD_TIMES_PREFIX = "periodTimes_"
-    const val KEY_ENDPOINT = "endpointV2"
+    const val KEY_ENDPOINT = "endpointV3"
     const val KEY_ENDPOINT_CHECKED_AT = "endpointCheckedAt"
 
     /** 처음 실행 시 기본으로 보는 학교(검색 결과의 이름·코드 그대로). */

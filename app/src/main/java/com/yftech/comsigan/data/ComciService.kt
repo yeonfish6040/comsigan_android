@@ -22,7 +22,7 @@ object ComciService {
         if (query.length < 2) return@withContext emptyList()
 
         withEndpoint(context) { endpoint ->
-            parseSchools(Http.sanitizedJson(Http.getBytes(endpoint.searchUrl(query))))
+            parseSchools(ComciResponse.json(Http.getBytes(endpoint.searchUrl(query)), endpoint))
         }
     }
 
@@ -194,6 +194,8 @@ object ComciService {
                     searchPrefix = json.getString("searchPrefix"),
                     dataPrefix = json.getString("dataPrefix"),
                     decryptionKey = json.getString("decryptionKey"),
+                    responseFormat = json.getString("responseFormat"),
+                    encodedSearch = json.getBoolean("encodedSearch"),
                     dataKeys = json.getJSONObject("dataKeys").let { keys ->
                         keys.keys().asSequence().associateWith { keys.getString(it) }
                     },
@@ -201,12 +203,16 @@ object ComciService {
             }
         }
 
-        val discovered = runCatching { ComciEndpoint.discover() }.getOrElse { return ComciEndpoint.FALLBACK }
+        // 형식 해석 실패를 오래된 상수 요청으로 감추면 EOF/연결 끊김으로 오해하게 된다.
+        // 실패는 호출자에게 넘기고, 시간표 호출자는 기존 디스크 캐시를 사용할 수 있다.
+        val discovered = ComciEndpoint.discover()
         val encoded = JSONObject()
             .put("route", discovered.route)
             .put("searchPrefix", discovered.searchPrefix)
             .put("dataPrefix", discovered.dataPrefix)
             .put("decryptionKey", discovered.decryptionKey)
+            .put("responseFormat", discovered.responseFormat)
+            .put("encodedSearch", discovered.encodedSearch)
             .put("dataKeys", JSONObject(discovered.dataKeys))
             .toString()
         prefs.edit()

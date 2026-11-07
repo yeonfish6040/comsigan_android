@@ -308,4 +308,4 @@ data class UpcomingClass(
 
 data class School(val code: Int, val name: String, val region: String = "")
 
-class ComciException(message: String) : Exception(message)
+class ComciException(message: String, cause: Throwable? = null) : Exception(message, cause)

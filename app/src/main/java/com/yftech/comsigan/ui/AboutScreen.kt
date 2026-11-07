@@ -13,10 +13,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -26,13 +28,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yftech.comsigan.data.AppSettings
+import kotlinx.coroutines.launch
 
 /** 개인정보 처리방침 페이지. */
 private const val PRIVACY_POLICY_URL =
     "https://sneaky-parrot-647.notion.site/3bb874aebd068010b5f4e988af1a677f"
 
 @Composable
-fun AboutScreen(onScheduleSaved: () -> Unit = {}) {
+fun AboutScreen(updates: AppUpdateChecker, onScheduleSaved: () -> Unit = {}) {
+    val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val school = AppSettings.school(context)
     var showScheduleEditor by remember { mutableStateOf(false) }
@@ -57,6 +61,16 @@ fun AboutScreen(onScheduleSaved: () -> Unit = {}) {
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { scope.launch { updates.check() } }, enabled = !updates.isChecking) {
+                Text(if (updates.isChecking) "확인 중…" else "업데이트 확인")
+            }
+            TextButton(onClick = { updates.openStore() }) { Text("Google Play에서 보기") }
+        }
+        updates.message?.let {
+            Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
 
         HorizontalDivider(Modifier.padding(vertical = 12.dp))
 

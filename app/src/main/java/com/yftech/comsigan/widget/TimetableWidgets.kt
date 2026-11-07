@@ -12,6 +12,8 @@ import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
+import androidx.glance.action.clickable
+import androidx.glance.appwidget.action.actionStartActivity
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.glance.LocalSize
 import androidx.glance.currentState
@@ -24,6 +26,7 @@ import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.appwidget.updateAll
 import androidx.glance.background
 import androidx.glance.layout.Alignment
+import androidx.glance.layout.Box
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
@@ -36,6 +39,7 @@ import androidx.glance.material3.ColorProviders
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
+import com.yftech.comsigan.MainActivity
 import com.yftech.comsigan.data.AppSettings
 import com.yftech.comsigan.data.ComciService
 import com.yftech.comsigan.data.Timetable
@@ -115,19 +119,28 @@ abstract class BaseTimetableWidget(private val slot: WidgetSlot) : GlanceAppWidg
             }
 
             GlanceTheme(colors = SystemColors) {
-                // 호스트는 데이터만 넘기고, 화면 구성은 전적으로 레이아웃이 한다.
-                layout.Content(
-                    WidgetRenderScope(
-                        size = LocalSize.current,
-                        palette = palette,
-                        timetable = timetable,
-                        nextWeekTimetable = nextWeekTimetable,
-                        school = school,
-                        grade = grade,
-                        klass = klass,
-                        status = status,
+                // 레이아웃이나 로딩 상태에 관계없이 위젯 전체를 누르면 앱을 연다.
+                Box(
+                    modifier = GlanceModifier.fillMaxSize()
+                        .clickable(
+                            actionStartActivity(
+                                Intent.makeMainActivity(ComponentName(app, MainActivity::class.java))
+                            )
+                        ),
+                ) {
+                    layout.Content(
+                        WidgetRenderScope(
+                            size = LocalSize.current,
+                            palette = palette,
+                            timetable = timetable,
+                            nextWeekTimetable = nextWeekTimetable,
+                            school = school,
+                            grade = grade,
+                            klass = klass,
+                            status = status,
+                        )
                     )
-                )
+                }
             }
         }
     }

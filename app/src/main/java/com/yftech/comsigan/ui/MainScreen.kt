@@ -5,11 +5,14 @@ import android.net.Uri
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -32,6 +35,24 @@ private enum class MainTab(val label: String) {
 @Composable
 fun MainScreen() {
     val context = LocalContext.current
+    val updates = remember { AppUpdateChecker(context) }
+    LaunchedEffect(updates) { updates.check(automatically = true) }
+    if (updates.showsUpdate) {
+        AlertDialog(
+            onDismissRequest = { updates.showsUpdate = false },
+            title = { Text("업데이트가 있습니다") },
+            text = { Text("새 버전을 Google Play에서 받을 수 있습니다.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    updates.showsUpdate = false
+                    updates.openStore()
+                }) { Text("업데이트") }
+            },
+            dismissButton = {
+                TextButton(onClick = { updates.showsUpdate = false }) { Text("나중에") }
+            },
+        )
+    }
     var tab by remember { mutableStateOf(MainTab.TIMETABLE) }
     var timetableRefreshKey by remember { mutableStateOf(0) }
     val anchors = rememberTutorialAnchors()
@@ -69,7 +90,7 @@ fun MainScreen() {
                 MainTab.WIDGET -> WidgetSettingsScreen(
                     onChanged = { TimetableWidgets.requestRefresh(context) },
                 )
-                MainTab.ABOUT -> AboutScreen(onScheduleSaved = { timetableRefreshKey++ })
+                MainTab.ABOUT -> AboutScreen(updates = updates, onScheduleSaved = { timetableRefreshKey++ })
             }
         }
     }

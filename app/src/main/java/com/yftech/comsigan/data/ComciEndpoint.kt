@@ -5,7 +5,7 @@ import org.json.JSONArray
 
 /**
  * 컴시간 열람 페이지(/st)에 박혀 있는 호출 상수. 컴시간이 갱신되면 값이 바뀌므로
- * 페이지에서 직접 뽑아 쓰고, 실패하면 마지막으로 알려진 값으로 동작한다.
+ * 페이지에서 직접 뽑아 요청 형식과 응답 스키마를 함께 갱신한다.
  */
 /**
  * 열람할 주차. 요청 끝자리 `r`이 이 값이고, 고를 수 있는 주차 목록은
@@ -23,26 +23,31 @@ data class ComciWeek(
 }
 
 data class ComciEndpoint(
-    /** 자료 요청 경로. 예: "937001" */
+    /** 자료 요청 경로. 예: "952563" */
     val route: String,
-    /** 학교 검색 접두어. 예: "44704l" */
+    /** 학교 검색 접두어. 예: "21326l" */
     val searchPrefix: String,
-    /** 시간표 요청 접두어. 예: "74173_" */
+    /** 시간표 요청 접두어. 예: "10893_" */
     val dataPrefix: String,
     /** 열람 페이지가 공개하는 시간표 응답 복호화 키. */
     val decryptionKey: String = DEFAULT_DECRYPTION_KEY,
     /** 변하는 서버 필드 이름 → 앱 파서가 쓰는 고정 이름. 캐시에는 고정 이름으로 저장한다. */
     val dataKeys: Map<String, String> = DEFAULT_DATA_KEYS,
+    val responseFormat: String = "enc2",
+    val encodedSearch: Boolean = false,
 ) {
-    /** 학교명 검색 URL. 질의는 EUC-KR로 퍼센트 인코딩해야 결과가 나온다. */
+    /** enc5 검색은 UTF-8 퍼센트 인코딩한 검색어를 요청 전체와 함께 base64로 감싼다. */
     fun searchUrl(query: String): String {
-        val encoded = URLEncoder.encode(query, "EUC-KR")
-        return "$HOST/$route?$searchPrefix$encoded"
+        val token = if (encodedSearch) {
+            encodeURIComponent(base64((searchPrefix + encodeURIComponent(query) + "_" + responseFormat).toByteArray(Charsets.UTF_8)))
+        } else {
+            searchPrefix + URLEncoder.encode(query, "EUC-KR")
+        }
+        return "$HOST/$route?$token"
     }
 
-    /** 시간표 URL. `<dataPrefix><학교코드>_0_<주차>_enc2`를 base64로 넘긴다. */
     fun timetableUrl(schoolCode: Int, week: Int = ComciWeek.FIRST.r): String {
-        val payload = "$dataPrefix${schoolCode}_0_${week}_enc2"
+        val payload = "$dataPrefix${schoolCode}_0_${week}_$responseFormat"
         return "$HOST/$route?${base64(payload.toByteArray(Charsets.UTF_8))}"
     }
 
@@ -55,7 +60,26 @@ data class ComciEndpoint(
         )
         const val DEFAULT_DECRYPTION_KEY = "6f428ea903c751d0b82f649d1e703ac5d4892fb601e8c347a5d09b2cf316784e"
 
-        val FALLBACK = ComciEndpoint(route = "937001", searchPrefix = "44704l", dataPrefix = "74173_")
+        val FALLBACK = ComciEndpoint(
+            route = "952563", searchPrefix = "21326l", dataPrefix = "10893_",
+            decryptionKey = "08061397ca3616e62f72c905b1ca6a0dda0584b7e357507831f0175668e165bd",
+            dataKeys = mapOf(
+                "자료147" to "자료112", "자료481" to "자료199", "자료446" to "자료102",
+                "자료492" to "자료142", "자료245" to "자료145", "자료244" to "자료162",
+            ),
+            responseFormat = "enc5", encodedSearch = true,
+        )
+
+        private fun encodeURIComponent(value: String): String = buildString {
+            for (byte in value.toByteArray(Charsets.UTF_8)) {
+                val code = byte.toInt() and 255
+                if (code in 65..90 || code in 97..122 || code in 48..57 || code.toChar() in "-_.!~*'()") {
+                    append(code.toChar())
+                } else {
+                    append("%%%02X".format(code))
+                }
+            }
+        }
 
         private const val BASE64_ALPHABET =
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -78,33 +102,53 @@ data class ComciEndpoint(
         }
 
         private val ROUTE = Regex("""\./(\d+)\?""")
-        private val SEARCH_PREFIX = Regex("""\?(\d+l)'""")
+        private val SEARCH_PREFIX = Regex("""(?:\?|btoa\(['"])(\d+l)['"]""")
         private val DATA_PREFIX = Regex("""sc_data\('(\d+_)'""")
 
         private val KEY = Regex("""var\s+key\s*=\s*CryptoJS\.enc\.Hex\.parse\(['"]([0-9a-f]{64})['"]\)""")
         private val PACKED_SCRIPT = Regex("""\}\)\((\[\[.*?\]\]),\s*(\d+)\);""", RegexOption.DOT_MATCHES_ALL)
 
-        /** 코드를 실행하지 않고 hour-obfuscated-v2의 문자열 묶음만 복원한다. */
-        fun decodedPage(html: String): String = buildString {
-            append(html)
-            for (match in PACKED_SCRIPT.findAll(html)) {
-                val blocks = JSONArray(match.groupValues[1])
-                val key = match.groupValues[2].toInt()
-                append('\n')
-                for (index in 0 until blocks.length()) {
-                    val block = blocks.getJSONArray(index)
-                    val text = block.getString(1)
-                    if (block.getInt(0) != 0) {
-                        append(text)
-                    } else {
-                        require(text.length % 4 == 0) { "Invalid timetable script" }
-                        for (offset in text.indices step 4) {
-                            val code = text.substring(offset, offset + 4).toInt(16)
-                            append((code xor ((key + offset / 4 * 13) and 255)).toChar())
+        /** 중첩된 hour-obfuscated 문자열을 복원한다. JavaScript는 실행하지 않는다. */
+        fun decodedPage(html: String): String {
+            var script = html
+            repeat(8) {
+                val matches = PACKED_SCRIPT.findAll(script).toList()
+                if (matches.isEmpty()) return script
+                for (match in matches.asReversed()) {
+                    val blocks = JSONArray(match.groupValues[1])
+                    val key = match.groupValues[2].toInt()
+                    val decoded = buildString {
+                        for (index in 0 until blocks.length()) {
+                            val block = blocks.getJSONArray(index)
+                            val text = block.getString(1)
+                            if (block.getInt(0) != 0) {
+                                append(text)
+                            } else {
+                                require(text.length % 4 == 0) { "Invalid timetable script" }
+                                for (offset in text.indices step 4) {
+                                    val code = text.substring(offset, offset + 4).toInt(16)
+                                    append((code xor ((key + offset / 4 * 13) and 255)).toChar())
+                                }
+                            }
                         }
                     }
+                    script = script.replaceRange(match.range, decoded)
                 }
+                require(script.length <= 4_000_000) { "Timetable script too large" }
             }
+            throw ComciException("시간표 서버의 요청 형식을 확인하지 못했습니다.")
+        }
+
+        private fun decryptionKey(script: String): String {
+            KEY.find(script)?.groupValues?.get(1)?.let { return it }
+            // 공개 페이지의 조각 재배열만 해석한다. 임의 표현식은 평가하지 않는다.
+            val pattern = Regex("""CryptoJS\.enc\.Hex\.parse\(\(function\(a\)\{return\s+((?:a\[\d+\]\+)*a\[\d+\]);\}\)\((\[[^]]+\])\)\)""")
+            val match = pattern.find(script) ?: throw ComciException("시간표 서버의 요청 형식을 확인하지 못했습니다.")
+            val pieces = JSONArray(match.groupValues[2])
+            val order = Regex("""a\[(\d+)\]""").findAll(match.groupValues[1])
+            val key = order.joinToString("") { pieces.getString(it.groupValues[1].toInt()) }
+            require(Regex("[0-9a-f]{64}").matches(key)) { "Invalid timetable key" }
+            return key
         }
 
         fun fromPage(html: String): ComciEndpoint {
@@ -115,7 +159,9 @@ data class ComciEndpoint(
                 route = required(ROUTE),
                 searchPrefix = required(SEARCH_PREFIX),
                 dataPrefix = required(DATA_PREFIX),
-                decryptionKey = KEY.find(script)?.groupValues?.get(1) ?: DEFAULT_DECRYPTION_KEY,
+                decryptionKey = decryptionKey(script),
+                responseFormat = Regex("""_(enc\d+)['"]""").find(script)?.groupValues?.get(1) ?: "enc2",
+                encodedSearch = Regex("""btoa\(['"]\d+l['"]\s*\+\s*encodeURIComponent\(""").containsMatchIn(script),
                 dataKeys = mapOf(
                     "자료147" to required(Regex("""일일자료\s*=\s*Q자료\(자료\.(자료\d+)""")),
                     "자료481" to required(Regex("""원자료\s*=\s*Q자료\(자료\.(자료\d+)""")),

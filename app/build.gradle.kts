@@ -40,6 +40,7 @@ android {
 }
 
 dependencies {
+    implementation("com.google.android.play:app-update:2.1.0")
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
