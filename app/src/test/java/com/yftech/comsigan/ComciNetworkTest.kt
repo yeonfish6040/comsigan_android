@@ -1,6 +1,7 @@
 package com.yftech.comsigan
 
 import com.yftech.comsigan.data.ComciDocument
+import com.yftech.comsigan.data.ComciProtocolConfig
 import com.yftech.comsigan.data.ComciEndpoint
 import com.yftech.comsigan.data.ComciResponse
 import com.yftech.comsigan.data.ComciService
@@ -15,6 +16,14 @@ import org.junit.Test
  * 상수 탐색 → EUC-KR 학교 검색 → 임의 학교 시간표 파싱까지 한 번에 본다.
  */
 class ComciNetworkTest {
+
+    @Test
+    fun rawProtocolConfigurationDownloadsAndValidates() {
+        val text = Http.getString(ComciProtocolConfig.RAW_URL)
+        val config = ComciProtocolConfig.decode(text)
+        assertTrue(config.revision.isNotEmpty())
+        assertTrue(config.fixedEndpoint().searchUrl("한국디").startsWith(config.baseUrl + "/"))
+    }
 
     @Test
     fun base64MatchesKnownToken() {
